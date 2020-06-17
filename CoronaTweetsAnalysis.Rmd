@@ -1,0 +1,805 @@
+```{r}
+knitr::opts_chunk$set(fig.width=12, fig.height=6) 
+```
+
+
+
+```{r}
+library(sentimentr)
+library(tidyr)
+library(tidytext)
+library(gridExtra)
+library(rtweet)
+library(httpuv)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(wordcloud)
+library(maps)
+library(spData)
+library(gridExtra)
+
+data("world")
+generic_ca_comb2<-read_twitter_csv("generic_ca_comb.csv", unflatten = FALSE)
+giant_comb2<-read_twitter_csv("giant_comb.csv", unflatten = FALSE)
+```
+
+
+# Analysis 
+
+# Top Words 
+
+Unest words, remove stopwords, show in graph from 
+
+'giant' are produced by search term: 
+search_tweets(  "\"corona app\" OR \"covid app\" OR \"corona virus app\" OR \"coronavirus app\" OR \"covid 19 app\" OR \"covid-19 app\" OR \"contact trac\" OR \"covid symptom track\" OR \"covidsafe app\"", include_rts = FALSE, retryonratelimit = TRUE, lang = "en")
+
+generic_ca are produced by the term: 
+search_tweets("\"corona app\" OR \"covid app\" OR \"corona virus app\" OR \"coronavirus app\" OR \"covid 19 app\" OR \"covid-19 app\"", include_rts = FALSE, retryonratelimit = TRUE, lang = "en")
+
+giant includes mentions specificly of apps like contact tracing, covid symptom tracker and covidsafe (australia)
+
+```{r}
+# unest tweet texts 
+tweet_words <- giant_comb2 %>% select(status_id, text) %>% unnest_tokens(word,text)
+
+# Most popular words analysis ####
+# what are the most popular words?
+tweet_words %>% count(word,sort=T) %>% filter(word != "app") %>% slice(1:30) %>% 
+  ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
+  geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 60,hjust = 1)) +
+  xlab("")
+
+# app additional common twitter words to stop words
+my_stop_words <- stop_words %>% select(-lexicon) %>% 
+  bind_rows(data.frame(word = c("https", "t.co", "rt", "amp")))
+
+# keep only interesting words
+tweet_words_interesting <- tweet_words %>% anti_join(my_stop_words)
+
+# put into graph 
+tweet_words_interesting %>% group_by(word) %>% tally(sort=TRUE) %>% filter(word != "app") %>%  
+  slice(1:30) %>% ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 60,  hjust = 1)) + 
+  xlab("")
+
+
+```
+
+Many words simply around the topic of the apps e.g. covidsafe, covid, downloacd contact, million (popularity of downloads).
+Also actors in the tech field goodle/ apple. 
+Context of Australia mainly - auspol, australians
+Words such as privicy, rejects, trust, health are also prominent relating to sensativity of health data. 
+
+
+
+```{r}
+# unest tweet texts 
+tweet_words <- generic_ca_comb %>% dplyr::select(status_id, text) %>% unnest_tokens(word,text)
+
+# seperate into before May 2 (majority Aus)
+tweet_words_bMay2 <- generic_ca_comb2 %>% filter(Date <"2020-05-02")%>% dplyr::select(status_id, text) %>% unnest_tokens(word,text)
+
+# after May 2 (majority UK)
+tweet_words_aMay2 <- generic_ca_comb2 %>% filter(Date >="2020-05-02")%>% dplyr::select(status_id, text) %>% unnest_tokens(word,text)
+
+# overall top words 
+tweet_words %>% count(word,sort=T) %>% filter(word != "app") %>% slice(1:30) %>% 
+  ggplot(aes(x = reorder(word, n, function(n) -n), y = n)) + 
+  geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 60,hjust = 1)) +
+  xlab("")
+
+# app additional common twitter words, missed stop words due to punctuation and cornona/app search terms to stop words
+my_stop_words <- stop_words %>% dplyr::select(-lexicon) %>% 
+  bind_rows(data.frame(word = c("https", "t.co", "rt", "amp", "it’s", "don’t", "don’t", "’s", "covid", "coronavirus", "app", "19", "corona", "i’m" , "1")))
+
+# create function to make word plot
+TweetWordPlot<-function(tweet_words){
+
+# keep only interesting words
+tweet_words_interesting <- tweet_words %>% anti_join(my_stop_words)
+
+# put into graph 
+tweet_words_interesting %>% group_by(word) %>% tally(sort=TRUE)  %>%  
+  slice(1:60) %>% ggplot(aes(x = reorder(word, n, function(n) n), y = n)) + 
+  geom_bar(stat = "identity") + 
+  xlab("") + coord_flip()
+
+}
+
+# overall word plot
+TweetWordPlot(tweet_words)
+
+# split up between before and after may 2nd
+# TweetWordPlot(tweet_words_aMay2)
+# TweetWordPlot(tweet_words_bMay2)
+
+# create wordcloud function
+TweetWordCloud<-function(tweet_words, my_stop_words){
+
+# keep only interesting words
+tweet_words_interesting <- tweet_words %>% anti_join(my_stop_words)
+
+tweet_words_interesting <-tweet_words_interesting[-grep("\\b\\d+\\b", tweet_words_interesting$word),]
+
+word_counts<-tweet_words_interesting %>% count(word)
+
+set.seed(1234)
+wordcloud(word_counts$word, word_counts$n, max.words = 120,  random.order=FALSE, rot.per=0.25, 
+          colors= c("#24A6F3","#07B69A","#336A95","#61ACAC"))
+
+}
+
+TweetWordCloud(tweet_words, my_stop_words)
+# TweetWordCloud(tweet_words_bMay2)
+# TweetWordCloud(tweet_words_aMay2)
+
+
+# colors= c("#f78357" ,"#EF496C", "#07b69a","#24a6f3")
+# colors= c("#f78357" ,"#AF2C4E", "#915A81","#24a6f3")
+
+```
+Compare covidsafe app to track and trace 
+
+```{r}
+tweet_words_TT <- track_trace_comb %>% select(status_id, text) %>% unnest_tokens(word,text)
+tweet_words_CS<- covidsafe_comb %>% select(status_id, text) %>% unnest_tokens(word,text)
+
+my_stop_words_TT <- stop_words %>% dplyr::select(-lexicon) %>% 
+  bind_rows(data.frame(word = c("https", "t.co", "rt", "amp", "it’s", "don’t", "don’t", "’s", "covid", "coronavirus", "app", "19", "corona", "i’m", "track", "trace" )))
+
+my_stop_words_CS <- stop_words %>% dplyr::select(-lexicon) %>% 
+  bind_rows(data.frame(word = c("https", "t.co", "rt", "amp", "it’s", "don’t", "don’t", "’s", "covid", "coronavirus", "app", "19", "corona", "i’m", "covidsafe")))
+
+TweetWordCloud(tweet_words_TT, my_stop_words_TT)
+TweetWordCloud(tweet_words_CS, my_stop_words_CS)
+
+```
+
+```{r}
+# BIGRAMS
+
+CVA_bigrams<-giant_comb2 %>% select(status_id, text) %>% unnest_tokens(bigram,text,token = "ngrams", n = 2) 
+
+bigrams_CVA <-CVA_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")%>%
+  filter(!word1 %in% my_stop_words$word) %>%
+  filter(!word2 %in% my_stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+# bigrams
+bigrams_CVA %>%
+  count(bigram, sort = TRUE) %>%
+  top_n(50) %>%
+  mutate(bigram = reorder(bigram, n)) %>%
+  ggplot(aes(bigram, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+Mostly context based - news organisations, references to Austalian PM, mentions of search terms, apple google prominent as they had a joint initiative around tracing app. Also Indian context - setu mera. Some positive - save lives
+
+
+```{r}
+# BIGRAMS
+
+CVA_bigrams<-generic_ca_comb2 %>% select(status_id, text) %>% unnest_tokens(bigram,text,token = "ngrams", n = 2) 
+
+bigrams_CVA <-CVA_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")%>%
+  filter(!word1 %in% my_stop_words$word) %>%
+  filter(!word2 %in% my_stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+# bigrams
+bigrams_CVA %>%
+  count(bigram, sort = TRUE) %>%
+  top_n(50) %>%
+  mutate(bigram = reorder(bigram, n)) %>%
+  ggplot(aes(bigram, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+```{r}
+# TRIGRAMS
+
+CVA_trigrams<-giant_comb2 %>% dplyr::select(status_id, text) %>% unnest_tokens(trigram,text,token = "ngrams", n = 3) 
+
+CVA_5<-giant_comb2 %>% dplyr::select(status_id, text) %>% unnest_tokens(trigram,text,token = "ngrams", n = 15) 
+# bigrams_CVA <-CVA_bigrams %>%
+#   separate(bigram, c("word1", "word2"), sep = " ")%>%
+#   filter(!word1 %in% my_stop_words$word) %>%
+#   filter(!word2 %in% my_stop_words$word) %>% 
+#   unite(bigram, word1, word2, sep = " ")
+
+# bigrams
+CVA_trigrams %>%
+  count(trigram, sort = TRUE) %>%
+  top_n(50) %>%
+  mutate(trigram = reorder(trigram, n)) %>%
+  ggplot(aes(trigram, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+CVA_5 %>%
+  count(trigram, sort = TRUE) %>%
+  top_n(50) %>%
+  mutate(trigram = reorder(trigram, n)) %>%
+  ggplot(aes(trigram, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+As above 
+
+# Time plot
+```{r}
+
+ts_plot(giant_comb2, "hours")
+ts_plot(generic_ca_comb2, "hours", trim = TRUE) + 
+  labs(x= "\nDate and Time",
+       y = "Number of tweets per hour\n",
+       title = "Time series of Covid-19 app tweets",
+       subtitle = "Frequency of tweets calculated in one-hour intervals")  + 
+  geom_line(color = "#1DA1F2") +
+  theme_minimal() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "grey",
+                                 size = 1)
+        ) 
+                                                                                                                   
+
+
+ts_plot(giant_comb2, "days")
+
+ts_plot(generic_ca_comb2, "days", trim = TRUE)+ 
+  geom_line(aes(lty= "Number of daily \nCOVID-19 app \ntweets"),color = "#1DA1F2", size =1.5)+ 
+  labs(x= "\nDate",
+       y = "",
+       title = "Time series of Covid-19 app tweets",
+       subtitle = "Showing daily count of tweets about Covid-19 apps \n",
+       lty = ""
+       ) +
+  theme_minimal() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "grey", size =1),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        plot.title=element_text(family="Times", face="bold", size=20),
+        plot.subtitle=element_text(family="Times", size=14))+
+  annotate("text",
+           x = as.POSIXct("2020-04-28"),
+           y = 1200,
+           label = "Peak following the release of the 'COVIDSafe\nApp' by Australian Government on 26 April",
+           color = "black", 
+           hjust = 0) +
+    annotate("text",
+           x = as.POSIXct("2020-05-06"),
+           y = 1200,
+           label = "Peak following UK Government announcement \non 4 May that NHS Covid-19 'track and trace' \napp to be trialled on the Isle of Wight",
+           color = "black",
+           hjust =0)
+
+# "Peak following the release of the 'COVIDSafe App' by  Australian Government on 26 April" 
+# "Peak following UK Government announcment on 4 May that NHS Covid-19 'track and trace' app to be trialled on the Isle of Wight". 
+                                                        
+# starting on 25th April to 11th Map (currently)
+
+# uk context
+# ts_plot(track_trace_070520, "hours")
+# ts_plot(track_trace_070520, "days")
+
+
+```
+
+Large spike on April 27th with launch of covidsafe app in australia. Levels have been maintained quite high since then. For non covidsafe terms there is also a large spike on May 2nd. Need for further searching to see why this may be the case - 
+
+
+# Sentiment Analysis 
+```{r}
+
+nrc_lex <- get_sentiments("nrc")
+bing_lex <- get_sentiments("bing")
+
+bing_lex<-bing_lex %>% filter(word!= "virus")%>% 
+  filter(word!= "symptoms")%>%
+  filter(word!= "infection")%>%
+  filter(word!= "infections")%>% 
+  filter(word!= "infected")%>% 
+  filter(word!= "trump")
+
+# # remove virus related words as these are neutral in this context 
+# bing_lex$sentiment[bing_lex$word == "virus"]<-NA
+# bing_lex$sentiment[bing_lex$word == "symptoms"]<-NA
+# bing_lex$sentiment[bing_lex$word == "infection"]<-NA
+# bing_lex$sentiment[bing_lex$word == "infections"]<-NA
+# bing_lex$sentiment[bing_lex$word == "infected"]<-NA
+# bing_lex$sentiment[bing_lex$word == "trump"]<-NA
+
+
+CA_sentiment_bing <- tweet_words_interesting %>% left_join(bing_lex) 
+
+CA_sentiment_bing %>% filter(!is.na(sentiment))%>% ggplot(aes(x=sentiment))+ geom_histogram(stat = "count")
+
+CA_sentiment_nrc <- tweet_words_interesting %>% left_join(nrc_lex) 
+
+CA_sentiment_nrc %>% filter(!is.na(sentiment))%>% ggplot(aes(x=sentiment))+ geom_histogram(stat = "count")
+
+
+bing_word_counts <- CA_sentiment_bing %>%
+  inner_join(bing_lex) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(50) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+
+nrc_word_counts<- CA_sentiment_nrc %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+nrc_word_counts %>%
+  group_by(sentiment) %>%
+  filter(!is.na(sentiment))%>%
+  top_n(20) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+
+```
+
+
+
+Using the sentimentmineR package - this takes into account negation 
+
+but how many of these words are actually 'not good' vs good 
+
+## Negation words
+```{r}
+
+CVA_bigrams_seperated<- CVA_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+AFINN <- get_sentiments("afinn")
+bing_lex
+
+bing_lex2<- bing_lex %>% mutate(value = ifelse(sentiment == "positive", 1, -1)) %>% select(-sentiment)
+
+bing_neg<- bing_lex2
+bing_neg$word <- paste("neg", bing_neg$word, sep="_")
+bing_neg<- bing_neg %>% mutate(value = value*-1)
+
+bing_lex2<- full_join(bing_lex2, bing_neg)
+
+negation_words<- c("not", "no", "don't", "dont", "never", "without", "couldn't", "couldnt", "shouldn't", "shouldnt", "wouldn't", "wouldnt", "isn't", "isnt")
+
+not_words <- CVA_bigrams_seperated%>%
+  filter(word1 %in% negation_words) %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word2, value, sort = TRUE) %>%
+  ungroup()
+
+not_words <- CVA_bigrams_seperated%>%
+  filter(word1 %in% negation_words) %>%
+  inner_join(bing_lex2, by = c(word2 = "word")) %>%
+  count(word2, value, sort = TRUE) %>%
+  ungroup()
+
+not_words %>%
+  mutate(contribution = n * value) %>%
+  arrange(desc(abs(contribution))) %>%
+  head(20) %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * value, fill = n * value > 0)) +
+  geom_col(show.legend = FALSE) +
+  xlab("Words preceded by negation") +
+  ylab("Sentiment score * Number of Occurrences") +
+  ggtitle("Polar Sentiment of Words Preceded by Negation") +
+  coord_flip()
+
+```
+
+So maybe this can be integrated in by making these single words in the text.
+
+```{r}
+generic_ca_comb3<- generic_ca_comb2
+
+generic_ca_comb3$text<-tolower(generic_ca_comb3$text)
+
+generic_ca_comb3$text<-gsub("not ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("not a", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("don't ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("don’t  ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("won’t  ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("won't  ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("dont ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("wouldn't  ", "neg_", generic_ca_comb3$text)
+generic_ca_comb3$text<-gsub("couldn't  ", "neg_", generic_ca_comb3$text)
+
+
+tweet_words <- generic_ca_comb3 %>% dplyr::select(status_id, text) %>% unnest_tokens(word,text)
+
+tweet_words_interesting <- tweet_words %>% anti_join(my_stop_words)
+
+bing_lex3<- bing_lex2 %>% mutate(sentiment = ifelse(value == 1, "positive", "negative"))
+
+CA_sentiment_bing <- tweet_words_interesting %>% left_join(bing_lex3) 
+
+CA_sentiment_bing %>% filter(!is.na(sentiment))%>% ggplot(aes(x=as.factor(sentiment)))+ geom_histogram(stat = "count")
+
+neg_counts<-CA_sentiment_bing %>% filter(!is.na(sentiment)) %>% count(word, sentiment)
+
+neg_counts %>%
+  group_by(sentiment) %>%
+  top_n(100) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+
+```
+
+
+```{r}
+
+GCA_sent<- generic_ca_comb2 %>% select(created_at, text, status_id)
+
+GCA_sent_list<-as.vector(GCA_sent$text)
+
+GCA_sent_list<-GCA_sent_list %>% sentiment_by()
+
+sum(GCA_sent_list$ave_sentiment)
+
+GCA_sent<-GCA_sent %>% get_sentences() %>% sentiment()
+
+GCA_sent%>% ggplot() + geom_count(aes(x=created_at, y=sentiment))
+
+sentiment_terms<-extract_sentiment_terms(GCA_sent$text)
+
+
+poswords<- sentiment_terms %>% filter(positive != "character(0)")
+
+poswords<-  as.character(poswords$positive)
+                                     
+poswords<-gsub("c\\(", "", poswords) 
+
+set.seed(1234)
+wordcloud(poswords, min.freq=50,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+# contact shouldn't really be good, also care in context of care-workers? 
+
+negwords<- sentiment_terms %>% filter(negative != "character(0)")
+
+negwords<-  as.character(negwords$negative)
+                                     
+negwords<-gsub("c\\(", "", negwords) 
+
+set.seed(1234)
+wordcloud(negwords, min.freq=50,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+# should governmnt, symptoms and virus be within this? 
+
+```
+
+Words normally seen as negative but relating to virus made neutral e.g. sypmtom, infect etc. 
+
+# Location Analysis
+```{r, fig.height= 8, fig.width=12}
+
+# colours <- c("#24A6F3", "#9EB164" ,"#FFBC42", "#F78357", "#EF496C")
+
+locations<-giant_comb2 %>% filter(!is.na(country))
+locations<-generic_ca_comb %>% filter(!is.na(country))
+
+locations$Date<-as.Date(locations$created_at)
+
+generic_ca_comb2$Date<-as.Date(generic_ca_comb2$created_at)
+generic_ca_comb2 %>% group_by(Date) %>% count()
+
+giant_comb2 %>% filter(!is.na(country))%>%  count(country, sort = TRUE) %>% 
+  ggplot(aes(x=reorder(country, n, function(n)-n), y=n))+ 
+  geom_bar(stat = "identity")+ 
+  theme(axis.text.x = element_text(angle = 60,hjust = 1)) + xlab("")
+
+
+generic_ca_comb %>% filter(!is.na(country))%>%  count(country, sort = TRUE) %>% filter(n>1)%>%
+  ggplot(aes(x=reorder(country, n, function(n)n), y=n))+ 
+  geom_bar(stat = "identity", fill = "#1DA1F2")+ 
+  theme() + labs(x= "", y = "\nNumber of tweets", title = "Locations of Geocoded Tweets about COVID-19 app", subtitle = "Number of geo-located tweets from each country from 25 April - 11 May 2020") + 
+  coord_flip()+
+  theme_minimal() + 
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        plot.title=element_text(face="bold", size=18),
+        plot.subtitle=element_text(size=14))+
+  scale_y_continuous(expand = c(0, 3))
+
+# Top 5 countries 
+locations %>% group_by(Date) %>% count(country, sort = TRUE) %>% ungroup() %>% filter(country == "United Kingdom" | country == "Australia" | country == "India" | country == "United States" | country == "Canada" ) %>% ggplot(aes(x= Date, y =n, fill = country)) + geom_bar(stat = "identity") + scale_fill_manual(values =c("#24A6F3", "#9EB164" ,"#FFBC42", "#F78357", "#EF496C")) + theme_minimal()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        plot.title=element_text(family="Times", face="bold", size=20),
+        plot.subtitle=element_text(family="Times", size=14))
+
+# change from Australia to UK 
+locations %>% group_by(Date) %>% count(country, sort = TRUE) %>% ungroup() %>% filter(country == "United Kingdom" | country == "Australia" ) %>% 
+  filter(Date != "2020-04-24")%>%
+  filter(Date != "2020-05-12")%>%
+  ggplot(aes(x= Date, y =n, fill = country)) + 
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values =c("#24A6F3", "#F78357"))  +
+ theme_minimal() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "grey", size =1),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        plot.title=element_text(family="Times", face="bold", size=20),
+        plot.subtitle=element_text(family="Times", size=14)) + 
+  labs(title = "Number of Geo-located COVID-19 app tweets each day by country", 
+       subtitle = "Comparison of Australia and the UK from 25 April - 11 May 2020",
+       x= "\n Date",
+       y= "Number of tweets\n",
+       fill = "Country")+
+  scale_y_continuous(expand = c(0, 1))
+
+locations%>% mutate(country = ifelse(country != "United Kingdom" & country != "Australia", "Other", country)) %>% group_by(Date) %>%  count(country, sort = TRUE) %>% ungroup() %>%
+  filter(Date != "2020-04-24")%>%
+  filter(Date != "2020-05-12")%>%
+  ggplot(aes(x= Date, y =n, fill = country)) + 
+  geom_bar(stat = "identity", position = "fill") + 
+  scale_fill_manual(values =c("#24A6F3", "#e8e6e6", "#F78357"))  +
+ theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "grey", size =1),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        plot.title=element_text(family="Times", face="bold", size=20),
+        plot.subtitle=element_text(family="Times", size=14),
+        plot.caption = element_text(family="Times",  size=14)) + 
+  labs(title = "", 
+       caption = "Proportion of geo-located tweets produced in the UK vs Australia each day from 25 April - 11 May 2020",
+       x= "\n Date",
+       y= "Proportion of tweets\n",
+       fill = "Country")+
+  scale_y_continuous(expand = c(0, 0))+
+  scale_x_date(expand = c(0.03,0),position= "top")
+  
+
+
+location_counts<-locations %>% group_by(country) %>% count()
+```
+
+```{r, fig.width = 12, fig.height=10}
+
+# Combined time series and AUS/ UK
+
+g1<-generic_ca_comb2 %>% 
+  group_by(Date)%>% 
+  count() %>% 
+  filter(Date != "2020-04-24")%>%
+  filter(Date != "2020-05-12")
+
+g2<-locations %>% group_by(Date) %>% count(country, sort = TRUE) %>% ungroup() %>% filter(country == "United Kingdom" | country == "Australia" ) %>% 
+  filter(Date != "2020-04-24")%>%
+  filter(Date != "2020-05-12")
+
+m1<-ggplot() + 
+  geom_line(data = g1, aes(x= Date, y= n, lty= "Number of daily   \nCOVID-19 app\ntweets"),color = "#1DA1F2", size =1.5)+
+  labs(x= "\nDate",
+       y = "Number of tweets\n",
+       title = "Time series of Covid-19 app tweets",
+       subtitle = "Daily count of tweets about Covid-19 apps (top) and daily count of geo-located tweets produced \nin different countries (bottom), 25 April - 11 May 2020\n",
+       lty = "") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_line(linetype = "dashed"),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "grey", size =1),
+        axis.title.y = element_text(size =10),
+        axis.text = element_text(size= 11),
+        axis.title = element_text(size =12),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        plot.title=element_text(family="Times", face="bold", size=20),
+        plot.subtitle=element_text(family="Times", size=14))+
+  annotate("text",
+           x = as.Date("2020-04-28"),
+           y = 1200,
+           label = "Peak following the release of the 'COVIDSafe\nApp' by Australian Government on 26 April",
+           color = "black", 
+           hjust = 0) +
+  annotate("text",
+           x = as.Date("2020-05-06"),
+           y = 1200,
+           label = "Peak following UK Government announcement \non 4 May that NHS Covid-19 'track and trace' \napp to be trialled on the Isle of Wight",
+           color = "black",
+           hjust =0)
+  
+  m2<-locations%>% mutate(country = ifelse(country != "United Kingdom" & country != "Australia", "Other", country)) %>% group_by(Date) %>%  count(country, sort = TRUE) %>% ungroup() %>%
+  filter(Date != "2020-04-24")%>%
+  filter(Date != "2020-05-12")%>%
+  ggplot(aes(x= Date, y =n, fill = country)) + 
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values =c("#24A6F3", "#e8e6e6", "#F78357"))  +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "grey", size =1),
+        axis.text.y = element_text(size= 11),
+        axis.text.x = element_text(size= 12),
+        axis.title = element_text(size = 13),
+        plot.title=element_blank(),
+        axis.title.y = element_text(size =10),
+        plot.subtitle=element_text(family="Times", size=14),
+        plot.caption = element_text(family="Times",  size=14)) + 
+  labs(
+       caption = "",
+       x= "\n Date",
+       y= "Number of tweets\n\n",
+       fill = "Country")+
+  scale_y_continuous(expand = c(0, 0.05))+
+  scale_x_date(expand = c(0.025,0))  
+
+
+grid.arrange(m1, m2, ncol = 1, heights = c(4, 2))
+# 
+# 
+# # library(maps)
+# # library(ggplot2) # tidyverse data visualization package
+# # library(sf)
+# # library(dplyr)
+# # library(raster)
+# # library(spData)
+# 
+# data("world")
+# 
+# world<- world %>% filter(iso_a2 != "AQ")
+# 
+# locations_LL <- lat_lng(locations)
+# 
+# ggplot(data = world) +
+#     geom_sf(fill = "#f0f0f0", color = "grey") +
+#     geom_point(data = locations_LL, aes(x = lng, y = lat), size = 1,  fill = "#24A6F3", color = "#24A6F3")+
+#   theme_minimal() + labs(x="",y="")+
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         axis.title = element_text(size =12),
+#         plot.title=element_text(family="Times", face="bold", size=20),
+#         plot.subtitle=element_text(family="Times", size=14))
+
+```
+
+Very few tweets have location enabled - 517 out of 14871 - approximately 3.4% - however perhaps this gives some indication of where the tweets in general are coming from
+
+Predominantly Australia as app there has been most widespread and put into action but this could change over the preceeding weeks as it comes into force in other countries. However UK is also second. 
+
+# Hashtags 
+```{r}
+
+
+hashtags<-giant_comb2 %>% filter(!is.na(hashtags))
+
+hashtags <- as.character(hashtags$hashtags)
+hashtags <- gsub("c\\(", "", hashtags)
+
+library(wordcloud)
+
+set.seed(1234)
+wordcloud(hashtags, min.freq=15,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+hashtags2<-generic_ca_comb2 %>% filter(!is.na(hashtags))
+
+hashtags2 <- as.character(hashtags2$hashtags)
+hashtags2 <- gsub("c\\(", "", hashtags2)
+
+
+set.seed(1234)
+wordcloud(hashtags2, min.freq=10,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+
+```
+
+```{r}
+
+
+hashtags<-generic_ca_comb2 %>% filter(!is.na(hashtags))
+
+hashtags <- as.character(hashtags$hashtags)
+hashtags <- gsub("c\\(", "", hashtags)
+
+library(wordcloud)
+
+set.seed(1234)
+wordcloud(hashtags, min.freq=10,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+hashtags2<-generic_ca_comb2 %>% filter(!is.na(hashtags))
+
+hashtags2 <- as.character(hashtags2$hashtags)
+hashtags2 <- gsub("c\\(", "", hashtags2)
+
+
+set.seed(1234)
+wordcloud(hashtags2, min.freq=10,  random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Dark2"))
+
+
+```
+
+# Mentioned Users 
+
+```{r}
+
+users<-generic_ca_comb2 %>% filter(!is.na(mentions_screen_name))
+
+users <- as.character(users$mentions_screen_name)
+users <- gsub("c\\(", "", users)
+
+set.seed(1234)
+wordcloud(users, min.freq=15,  random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(6, "Dark2"))
+
+```
+
+Most mentioned users by far as Scott Marrison (PM of Australia) and Greg Hunt (MP and Health Minister of Australia). This shows that Australia is dominating the conversation around this currently 
+
+# Notes 
+
+maybe use botornot account to filter ? https://github.com/mkearney/tweetbotornot
+
+# Action points to do: 
+
+ what words are the most positive/ negative/ fearful etc.
+
+ does context match up with this - for ecample contact seen as good isolation as bad but probably neutral - come up with custom stopwords
+
+split up by days/ weeks to see how things have changed - positve and negative 
+
+filter by country and context to see diferent peaks - e.g. conversation seems to be dominated by australia currently but could turn to UK with isle of wight
+
+what are the top linked articles etc within this 
+
+what are the most mentioned screen names in the dataset - WHO is being connected to (e.g. australian PM, health ministers etc.)
+
+knit2html("CoronaTweetsAnalysis.Rmd")
+
+
+
+
